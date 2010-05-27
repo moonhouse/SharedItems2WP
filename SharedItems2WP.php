@@ -40,7 +40,7 @@ if (!class_exists('SharedItems2WP')) {
         var $default_options = array(
             'revision' => 11,
             'share_url' => '',
-			'share_id'	=> '',
+            'share_id'	=> '',
             'feed_url' => '',
             'refresh_period' => 'weekly',
             'refresh_time' => '06:00 AM',
@@ -55,10 +55,10 @@ if (!class_exists('SharedItems2WP')) {
             'post_comments' => 1,
             'last_crawl' => 0,
             'last_refresh' => 0,
-	    'next_refresh' => 0,
+            'next_refresh' => 0,
             'last_refresh_feed' => 0,
             'last_refresh_date' => 0, // FIX: check/set the current date in the prototype, then exit if already run
-	    'currently_running' => 0
+            'currently_running' => 0
         );
 		
 		var $item_elements = array (
