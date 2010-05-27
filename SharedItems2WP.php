@@ -111,7 +111,7 @@ if (!class_exists('SharedItems2WP')) {
 		}
 
 		function actions_filters() {
-			
+			add_action('admin_init', array(&$this, 'admin_init'));
 			add_action('admin_menu', array(&$this, 'admin_menu'));
 			add_action($this->cron_event, array(&$this, 'run_cron'));
 			add_filter('cron_schedules', array ( &$this, 'register_schedules' ) );
@@ -442,67 +442,34 @@ if (!class_exists('SharedItems2WP')) {
                 update_option($this->options_key, $this->o);
             }
         }
-        
+
+        function admin_init() {
+            wp_register_style(
+                $this->options_key,
+                $this->plugin_url . 'shareditems2wp.css',
+                null,
+                $this->o['revision']
+            );
+
+            wp_register_script(
+                $this->options_key,
+                $this->plugin_url . 'shareditems2wp.js',
+                null,
+                $this->o['revision']
+            );
+        }
+
+        function admin_resources() {
+            wp_enqueue_style($this->options_key);
+            wp_enqueue_script($this->options_key);
+        }
 
         function admin_menu() {
             $page = add_submenu_page('options-general.php','SharedItems2WP', 'SharedItems2WP', 9, __FILE__, array($this, 'options_panel'));
-	    add_action('admin_head-' . $page, array(&$this, 'admin_head'));
+
+            add_action('admin_print_styles-' . $page, array(&$this, 'admin_resources'));
         }
 
-        function admin_head() {
-       
-	    ?>
-<script type="text/javascript">
-//<![CDATA[
-
-function check_url ( that, $ )
-{
-	var math_share_id = /(http|https):\/\/(www.)?google.com\/reader\/shared\/([0-9]+)\/?/i;
-	var share_url = $(that).val ( );
-	var matches = share_url.match(math_share_id);
-	if (  matches != null && matches[3].length == 20 )
-	{
-		$("#adv_paypal_url").css({backgroundColor:'lightgreen'});
-		$("#adv_share_id").val( matches[3] );
-		$("#filled_share_id").text ( matches[3] ).css({color:'green'});
-	}
-	else
-	{
-		$("#adv_paypal_url").css({backgroundColor: '#CD5C5C'});
-		$("#filled_share_id").text ( 'Incorrect shared items URL?' ).css({color: 'red'});
-	}
-}
-jQuery(document).ready ( function ( $ )
-{
-	/* a bit dirty, maybe... */
-	check_url ( $("#adv_paypal_url")
-		.change ( function ( ) { check_url ( this, $ ); } )
-		.keyup ( function ( ) { check_url ( this, $ ); } ), $ )
-	;
-});
-//]]>
-</script>
-<style type="text/css">
-.gdsr { margin-top: 10px; }
-.gdsr .previewtable td {
-	padding: 0px; 
-	border: 0px;
-}
-.gdsr-table-split {
-	width: 100%; 
-	margin-top: 10px; 
-	padding-top: 10px;
-}
-.submit {padding:0;}
-.column {margin-left: 150px; padding: 5px 0; width: 570px; clear: both; overflow: hidden;}
-.column div {float: left; width: 180px; padding: 5px;}
-.column span {float: right;}
-.friendlyform {float:left; margin-right: 2em;}
-</style>
-	    <?php
-	    
-        }
-        
         function options_panel() {
             $options = $this->o + array (
 				'title_elements'		=>	$this->title_elements,

@@ -1,0 +1,34 @@
+.gdsr {
+margin-top: 10px;
+}
+.gdsr .previewtable td {
+padding: 0px; 
+border: 0px;
+}
+.gdsr-table-split {
+width: 100%;
+margin-top: 10px;
+padding-top: 10px;
+}
+.submit {
+padding: 0;
+}
+.column {
+width: 570px;
+margin-left: 150px;
+padding: 5px 0;
+clear: both;
+overflow: hidden;
+}
+.column div {
+width: 180px;
+float: left;
+padding: 5px;
+}
+.column span {
+float: right;
+}
+.friendlyform {
+margin-right: 2em;
+float: left;
+}
