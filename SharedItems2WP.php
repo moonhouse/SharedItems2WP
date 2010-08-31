@@ -2,31 +2,23 @@
 
 /*
 Plugin Name: SharedItems2WP
-Plugin URI: http://jardenberg.se/shareditems2wp-google-reader-notes-wordpress/
+Plugin URI: http://jardenberg.se/SharedItems2WP
 Description: Scheduled automatic posting of Google Reader Shared Items.
-Version: 2.0.0
-Author:  <a href="http://www.googletutor.com/" title="Original author">Craig Fifield (Google Tutor)</a>, <a href="http://satf.se" title="Fork developer">Jonas Skovmand</a>, <a href="http://jardenberg.se" title="Forker and initiative taker">Joakim Jardenberg</a> and <a href="http://fridholm.net" title="Contributor">Marcus Fridholm</a>
+Version: 2.0.4
+Author: <a href="http://www.googletutor.com/" title="Original author">Craig Fifield (Google Tutor)</a>, <a href="http://satf.se" title="Fork developer">Jonas Skovmand</a>, <a href="http://jardenberg.se" title="Forker and initiative taker">Joakim Jardenberg</a> and <a href="http://fridholm.net" title="Contributor">Marcus Fridholm</a>
 */
 
 require_once(ABSPATH.WPINC.'/class-snoopy.php');
 require_once(ABSPATH.WPINC.'/rss.php');
-
-// add check if simplepie is already declared to avoid redeclaration
-if(!class_exists('SimplePie')) {
-    if (file_exists(WP_PLUGIN_DIR.'/simplepie-core/simplepie.inc')) {
-        require_once(WP_PLUGIN_DIR.'/simplepie-core/simplepie.inc');
-    } else {
-        require_once(dirname(__FILE__).'/simplepie.php');
-    }
-}
+// test to fix simplepie problem
+require_once(ABSPATH.WPINC.'/class-simplepie.php');
 
 
 if (!class_exists('SharedItems2WP')) {
     class SharedItems2WP
     {
 		
-		var $options_key = 'SharedItems2WP';
-		var $old_options_key = 'shared-items-post-options';
+		var $options_key = 'shared-items-post-options';
 		var $google_feed_url = 'http://www.google.com/reader/public/atom/user/%s/state/com.google/broadcast';
 		var $cron_event = 'si2wp_post';
 		
@@ -40,7 +32,6 @@ if (!class_exists('SharedItems2WP')) {
         var $default_options = array(
             'revision' => 11,
             'share_url' => '',
-            'share_id'	=> '',
             'feed_url' => '',
             'refresh_period' => 'weekly',
             'refresh_time' => '06:00 AM',
@@ -51,14 +42,15 @@ if (!class_exists('SharedItems2WP')) {
             'post_note_template' => '- %CONTENT%',
             'post_category' => 1,
             'post_tags' => '',
+            'post_status' => 'publish',
             'post_author' => 1,
             'post_comments' => 1,
             'last_crawl' => 0,
             'last_refresh' => 0,
-            'next_refresh' => 0,
+	    	'next_refresh' => 0,
             'last_refresh_feed' => 0,
             'last_refresh_date' => 0, // FIX: check/set the current date in the prototype, then exit if already run
-            'currently_running' => 0
+	    'currently_running' => 0
         );
 		
 		var $item_elements = array (
@@ -97,7 +89,7 @@ if (!class_exists('SharedItems2WP')) {
         }
 
 		function install_plugin() {
-			$this->o = ( $opt = get_option($this->options_key) ) ? $opt : get_option($this->old_options_key);
+			$this->o = get_option($this->options_key);
 						
 			if (!is_array($this->o) || empty($this->o) ) {
 				update_option($this->options_key, $this->default_options);
@@ -111,15 +103,18 @@ if (!class_exists('SharedItems2WP')) {
 		}
 
 		function actions_filters() {
-			add_action('admin_init', array(&$this, 'admin_init'));
-			add_action('admin_menu', array(&$this, 'admin_menu'));
-			add_action($this->cron_event, array(&$this, 'run_cron'));
-			add_filter('cron_schedules', array ( &$this, 'register_schedules' ) );
-			register_activation_hook(__FILE__, array ( &$this, 'register_cron' ) );
-			register_deactivation_hook(__FILE__, array ( &$this, 'unregister_cron' ) );
-			
 			add_action('init', array(&$this, 'init'));
+			add_action('admin_menu', array(&$this, 'admin_menu'));
+			add_action('admin_head', array(&$this, 'admin_head'));
+			add_action($this->cron_event, array(&$this, 'generate_post'));
+			add_filter('cron_schedules', array ( &$this, 'register_schedules' ) );
+			register_deactivation_hook(__FILE__, array ( &$this, 'unregister_cron' ) );
 		}
+		
+		/**
+		 * Registers additional cron frequencies
+		 * @return void
+		 */
 		
 		function register_schedules ( )
 		{
@@ -137,26 +132,28 @@ if (!class_exists('SharedItems2WP')) {
 			
 		}
 		
+		/**
+		 * Schedules a cron event
+		 * @param string $occurrence
+		 * @param time $offset
+		 * @return void
+		 */
 		
-		function run_cron ( )
-		{
-		
-			$this->generate_post ( );
-		
-		}
-		
-		function register_cron ( $run_immediately = false )
+		function register_cron ( $occurence, $offset )
 		{
 		
 			if ( $this->check_cron_registered ( ) )
 				$this->unregister_cron ( );
 			
-			wp_schedule_event ( $this->o['cron_time'], $this->o['refresh_period'], $this->cron_event );
-			
-			if ( $run_immediately )
-				spawn_cron ( );
+			$offset += ( get_option ( 'gmt_offset' ) * 3600 ); // post in the correct timezone!
+			wp_schedule_event ( $offset, $occurence, $this->cron_event );
 		
 		}
+		
+		/**
+		 * Unregisters cron event
+		 * @return void
+		 */
 		
 		function unregister_cron ( )
 		{
@@ -165,6 +162,11 @@ if (!class_exists('SharedItems2WP')) {
 		
 		}
 		
+		/**
+		 * Checks if SharedItems2WP is scheduled to post
+		 * @return boolean
+		 */
+		
 		function check_cron_registered ( )
 		{
 		
@@ -172,22 +174,17 @@ if (!class_exists('SharedItems2WP')) {
 		
 		}
 		
-		function cron_timestamp ( $refresh_time, $refresh_period )
+		/**
+		 * Parses Google Reader Shared Items page for feed URL
+		 * @param string $feed_url
+		 * @return string feed url
+		 */
+		
+		function get_feed_url ( $share_url )
 		{
-		
-			return strtotime ($refresh_time . ' +1 ' . $this->refresh_periods[strtolower($refresh_period)] );
-		
-		}
-
-		function get_feed_url($share_url) {
-			$share_id = ( isset ( $this->o['share_id'] ) && strlen ( $this->o['share_id'] == 20 ) ) ? $this->o["share_id"] : $this->get_share_id ( $share_url );
-			return sprintf ( $this->google_feed_url, $share_id );
-		}
-
-		function get_feed_contents($feed_url) {
-			$file = $this->get_file_contents($feed_url);
-			$rss = new MagpieRSS($file);
-			return $rss;
+			$file = $this->get_file_contents ( $share_url );
+			preg_match ( '/xml".href="(.+?)"/', $file, $matches );
+			return $matches[1];
 		}
 
 		function get_file_contents($url) {
@@ -201,10 +198,11 @@ if (!class_exists('SharedItems2WP')) {
 		}
 		
 		/**
-		* function to get the origin url if a HTTP redirect occured, recursively!
-		* @param string $url
-		* @return string origin url
-		*/
+		 * Get the origin URL if a HTTP redirect occurred--recursively!
+		 * @param string $url
+		 * @param int $iteration
+		 * @return string origin url
+		 */
 		
 		function get_origin_url ( $start_url, $iteration = 0 )
 		{
@@ -259,29 +257,16 @@ if (!class_exists('SharedItems2WP')) {
 			return $start_url;
 
 		}
-
 		
 		/**
-		* function to return share_id from share_url (instead of parsing it from the page itself...)
-		* @param string $share_url
-		* @return string|false share_id parsed from share_url
-		*/
+		 * Init function, called at every load
+		 * @return void
+		 */
 		
-		function get_share_id ( $share_url ) {
-		
-			preg_match_all ( '/(http|https):\/\/(www.)?google.com\/reader\/shared\/([0-9]+)\/?/i', $share_url, $matches );
-			
-			if ( isset ( $matches[3][0] ) && !empty ( $matches[3][0]{19} ) )
-				return $matches[3][0];
-			
-			return false;
-		}
-
 		function init() {
 			if ($_POST['action'] == 'runow') {
 			
 				check_admin_referer('shared-2', '_wpnonce2');
-				
 				$this->generate_post();
 				
 			}
@@ -307,6 +292,7 @@ if (!class_exists('SharedItems2WP')) {
 	
 		$this->o["post_title"] = $_POST['post_title'];
 		$this->o["post_tags"] = $_POST['post_tags'];
+		$this->o["post_status"] = $_POST['post_status'];
 		$this->o["post_header_template"] = stripslashes(htmlentities($_POST['post_header_template'], ENT_QUOTES, 'UTF-8'));
 		$this->o["post_footer_template"] = stripslashes(htmlentities($_POST['post_footer_template'], ENT_QUOTES, 'UTF-8'));
 		$this->o["post_item_template"] = stripslashes(htmlentities($_POST['post_item_template'], ENT_QUOTES, 'UTF-8'));
@@ -314,14 +300,13 @@ if (!class_exists('SharedItems2WP')) {
 		$this->o["post_author"] = $_POST['post_author'];
 		$this->o["post_category"] = $_POST['post_category'];
 		$this->o["post_comments"] = isset($_POST['post_comments']) ? 1 : 0;
-		$old_refresh_period = $this->o["refresh_period"];
-		$old_refresh_time = $this->o["refresh_time"];
 		$this->o["refresh_period"] = $_POST['refresh_period'];
 		$this->o["refresh_time"] = $_POST['refresh_time'];
-		$run_immediately = isset($_POST['run_immediately']) ? true : false;
-		$this->o['cron_time'] = $run_immediately ? time ( ) - 50: $this->cron_timestamp ( $_POST['refresh_time'], $_POST['refresh_period'] );
 		
+		$time_offset = isset ( $_POST['run_immediately'] ) ? time ( ) - 50: strtotime ( $_POST['refresh_time'] . ' +1 ' . $this->refresh_periods[strtolower($_POST['refresh_period'])] );
 		
+		if ( $_POST['refresh_time'] != $this->o['refresh_time'] || !$this->check_cron_registered ( ) )
+			$this->register_cron ( $this->o['refresh_time'], $time_offset );
 		
 		update_option($this->options_key, $this->o);
 
@@ -331,17 +316,13 @@ if (!class_exists('SharedItems2WP')) {
 			$url = $this->get_feed_url($share_url);
 			if ($url != "") {
 				$this->o["share_url"] = $share_url;
-				$this->o["share_id"] = $this->get_share_id ( $share_url );
 				$this->o["feed_url"] = $url;
 				update_option($this->options_key, $this->o);
 				$this->status = "ok";
 			}
 			else
-				$this->status = "Feed URL not found.";
+				$this->status = "not ok";
 		}
-		
-		if ( $_POST['refresh_time'] != $old_refresh_time || $_POST['refresh_period'] != $old_refresh_period || !$this->check_cron_registered ( ) || $run_immediately )
-			$this->register_cron ( $run_immediately );
 	
 	}
 	
@@ -360,6 +341,7 @@ if (!class_exists('SharedItems2WP')) {
             $new_items = array();
             $post_content = "";
             $newtime=0;
+            
             if ($this->o["last_refresh_feed"] < $last_update) {
                 foreach ($rss->get_items() as $item) {
                 	                	                 
@@ -428,7 +410,7 @@ if (!class_exists('SharedItems2WP')) {
                 $new_post['comment_status'] = $this->o["post_comments"] == 1 ? 'open' : 'closed';
                 $new_post['post_author'] = $this->o["post_author"];
                 $new_post['post_content'] = $post_header.$post_content.$post_footer;
-                $new_post['post_status'] = 'publish';
+                $new_post['post_status'] = $this->o["post_status"];
                 $new_post['post_title'] = $post_title;
                 $new_post['post_type'] = 'post';
                 $new_post['post_category'] = array($this->o["post_category"]);
@@ -442,34 +424,65 @@ if (!class_exists('SharedItems2WP')) {
                 update_option($this->options_key, $this->o);
             }
         }
-
-        function admin_init() {
-            wp_register_style(
-                $this->options_key,
-                $this->plugin_url . 'shareditems2wp.css',
-                null,
-                $this->o['revision']
-            );
-
-            wp_register_script(
-                $this->options_key,
-                $this->plugin_url . 'shareditems2wp.js',
-                null,
-                $this->o['revision']
-            );
-        }
-
-        function admin_resources() {
-            wp_enqueue_style($this->options_key);
-            wp_enqueue_script($this->options_key);
-        }
+        
 
         function admin_menu() {
-            $page = add_submenu_page('options-general.php','SharedItems2WP', 'SharedItems2WP', 9, __FILE__, array($this, 'options_panel'));
-
-            add_action('admin_print_styles-' . $page, array(&$this, 'admin_resources'));
+            add_submenu_page('options-general.php','SharedItems2WP', 'SharedItems2WP', 9, basename(__FILE__), array($this, 'options_panel'));
         }
 
+        function admin_head() {
+       
+	    ?>
+<script type="text/javascript">
+//<![CDATA[
+
+function check_url ( that, $ )
+{
+	var share_url = $(that).val ( );
+	var matches = /(http|https):\/\/(www.)?google.([a-z]{2,7})\/reader\/shared\/(.+)/.exec(share_url);
+	
+	if (  typeof matches != 'undefined' && matches != null && typeof matches[4] != 'undefined' )
+	{
+		$("#adv_paypal_url").removeClass('invalid valid').addClass('valid');
+	}
+	else
+	{
+		$("#adv_paypal_url").removeClass('invalid valid').addClass('invalid');
+	}
+}
+jQuery(document).ready ( function ( $ )
+{
+	
+	check_url ( $("#adv_paypal_url")
+		.change ( function ( ) { check_url ( this, $ ); } )
+		.keyup ( function ( ) { check_url ( this, $ ); } ), $ ) /* a bit dirty, maybe... */
+	;
+});
+//]]>
+</script>
+<style type="text/css">
+.gdsr { margin-top: 10px; }
+.gdsr .previewtable td {
+	padding: 0px; 
+	border: 0px;
+}
+.gdsr-table-split {
+	width: 100%; 
+	margin-top: 10px; 
+	padding-top: 10px;
+}
+.submit {padding:0;}
+.column {margin-left: 150px; padding: 5px 0; width: 570px; clear: both; overflow: hidden;}
+.column div {float: left; width: 180px; padding: 5px;}
+.column span {float: right;}
+.friendlyform {float:left; margin-right: 2em;}
+.valid { background-color: lightgreen; }
+.invalid { background-color: #CD5C5C; }
+</style>
+	    <?php
+	    
+        }
+        
         function options_panel() {
             $options = $this->o + array (
 				'title_elements'		=>	$this->title_elements,
@@ -498,7 +511,7 @@ if (!class_exists('SharedItems2WP')) {
 <table class="form-table"><tbody>
     <tr><th scope="row"><label for="adv_paypal_url">Shared items url:</label></th>
         <td>
-            <input type="text" name="share_url" id="adv_paypal_url" value="<?php echo $options["share_url"]; ?>" style="width: 720px" /><input type="hidden" name="share_id" id="adv_share_id" value="<?php echo $options["share_id"]; ?>" /><br />ID: <span id="filled_share_id"><?php if ( !empty ( $options["share_id"] ) ): echo $options["share_id"]; else: echo 'Please insert shared items URL'; endif; ?></span>
+            <input type="text" name="share_url" id="adv_paypal_url" value="<?php echo $options["share_url"]; ?>" class="<?php if ( $status=='not ok' ): echo 'invalid'; else: echo 'valid'; endif; ?>" style="width: 720px" />
         </td>
     </tr>
     <tr><th scope="row"><label for="refresh_period">Refresh:</label></th>
@@ -551,8 +564,7 @@ if (!class_exists('SharedItems2WP')) {
             <table cellpadding="0" cellspacing="0" class="previewtable">
                 <tr>
                     <td width="150" height="25"><label for="post_item_template">Item:</label></td>
-                    <td><textarea name="post_item_template" id="post_item_template" style="width: 570px;" rows="3"><?php echo wp_specialchars($options["post_item_template"]); ?></textarea>
-		    <br />
+                    <td><input type="text" name="post_item_template" id="post_item_template" value="<?php echo wp_specialchars($options["post_item_template"]); ?>" style="width: 570px" /><br />
                     List of available template elements:</td>
                 </tr>
             </table>
@@ -609,6 +621,13 @@ if (!class_exists('SharedItems2WP')) {
                     <td>
                     <input type="text" name="post_tags" id="post_tags" value="<?php echo $options["post_tags"]; ?>" style="width: 570px" />
                     </td>
+                </tr>
+                <tr>
+                	<td width="150" height="25"><label for="post_status">Status:</label></td>
+                	<td>
+                		<input type="radio" name="post_status" value="publish" <?php if($options['post_status'] == 'publish') echo " checked=\"checked\""; ?> /> Publish<br />
+                		<input type="radio" name="post_status" value="draft"  <?php if($options['post_status'] == 'draft') echo " checked=\"checked\""; ?> /> Create draft
+                	</td>
                 </tr>
                 <tr>
                     <td width="150" height="25"><label for="post_comments">Comments:</label></td>
