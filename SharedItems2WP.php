@@ -120,22 +120,23 @@ if (!class_exists('SharedItems2WP')) {
 			
 			add_action('init', array(&$this, 'init'));
 		}
-		
-		function register_schedules ( )
-		{
-			
-			return array (
-				'weekly'	=>	array (
-					'interval'	=>	604800,
-					'display'	=>	__( 'Once weekly' )
-				),
-				'monthly'	=>	array (
-					'interval'	=>	108000,
-					'display'	=>	__( 'Once monthly' )
-				)
-			);
-			
-		}
+
+        function register_schedules ($schedules)
+        {
+            if(!isset($schedules['weekly'])) {
+                $schedules['weekly'] = array (
+                    'interval'	=>	604800,
+                    'display'	=>	__( 'Once weekly' )
+                );
+            }
+            if(!isset($schedules['weekly'])) {
+                $schedules['monthly'] = array (
+                    'interval'	=>	2629728,
+                    'display'	=>	__( 'Once monthly' )
+                );
+            }
+            return $schedules;
+        }
 		
 		
 		function run_cron ( )
